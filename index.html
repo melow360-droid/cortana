@@ -2,18 +2,40 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>¿Preparadas para el reto?</title>
     <style>
-        body { margin: 0; background: #0b0c10; color: white; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        canvas { background: #000; border: 4px solid #1f2833; box-shadow: 0 0 30px rgba(0,255,255,0.3); border-radius: 8px; }
-        #ui { margin-top: 15px; font-size: 18px; color: #66fcf1; text-shadow: 0 0 5px rgba(102,252,241,0.5); text-align: center; }
+        body { margin: 0; background: #0b0c10; color: white; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; user-select: none; -webkit-user-select: none; }
+        canvas { background: #000; border: 4px solid #1f2833; box-shadow: 0 0 30px rgba(0,255,255,0.3); border-radius: 8px; max-width: 95vw; max-height: 50vh; aspect-ratio: 800/600; }
+        #ui { margin-top: 10px; font-size: 14px; color: #66fcf1; text-shadow: 0 0 5px rgba(102,252,241,0.5); text-align: center; max-width: 90vw; }
+        
+        /* Controles móviles en pantalla */
+        #controls { display: none; width: 95vw; justify-content: space-between; margin-top: 20px; padding: 0 10px; box-sizing: border-box; }
+        .btn-group { display: flex; gap: 15px; }
+        .btn { background: rgba(31, 40, 51, 0.8); border: 2px solid #66fcf1; color: #66fcf1; font-size: 24px; font-weight: bold; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; touch-action: manipulation; active-background: #66fcf1; }
+        .btn:active { background: #66fcf1; color: #0b0c10; box-shadow: 0 0 15px #66fcf1; }
+        #btn-fire { background: rgba(255, 0, 127, 0.3); border-color: #ff007f; color: #ff007f; width: 80px; height: 80px; font-size: 16px; border-radius: 50%; }
+        #btn-fire:active { background: #ff007f; color: white; box-shadow: 0 0 25px #ff007f; }
+
+        /* Mostrar botones solo en dispositivos táctiles */
+        @media (pointer: coarse) {
+            #controls { display: flex; }
+        }
     </style>
 </head>
 <body>
 
     <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div id="ui">👾 ¡ELIMINA LA INVASIÓN ESPACIAL! 👾<br><span style="font-size:14px; color:#aaa;">Usa las Flechas (← →) para moverte y la Barra Espaciadora para disparar.</span></div>
+    <div id="ui">👾 ¡ELIMINA LA INVASIÓN ESPACIAL! 👾</div>
+
+    <!-- Botones virtuales para móviles -->
+    <div id="controls">
+        <div class="btn-group">
+            <div class="btn" id="btn-left">←</div>
+            <div class="btn" id="btn-right">→</div>
+        </div>
+        <div class="btn" id="btn-fire">FIRE</div>
+    </div>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
@@ -24,10 +46,9 @@ let gameOver = false;
 let gameWon = false;
 let confetti = [];
 
-// Jugador ágil y fluido
-const player = { x: canvas.width / 2 - 25, y: canvas.height - 60, w: 50, h: 30, speed: 8, bullets: [] };
+// Ajustes de velocidad para que se controle genial en móvil
+const player = { x: canvas.width / 2 - 25, y: canvas.height - 60, w: 50, h: 30, speed: 9, bullets: [] };
 
-// Configuración de los 32 enemigos (4 filas x 8 columnas)
 const enemyRows = 4;
 const enemyCols = 8;
 const enemies = [];
@@ -36,24 +57,35 @@ for (let r = 0; r < enemyRows; r++) {
         enemies.push({ x: c * 70 + 130, y: r * 50 + 60, w: 40, h: 30, alive: true });
     }
 }
-let enemySpeed = 1.2;
+let enemySpeed = 1.1;
 let enemyDirection = 1;
 
+// Controladores de estado para teclado y móvil
 const keys = {};
+let moveLeft = false;
+let moveRight = false;
+let triggerShoot = false;
+
 window.addEventListener("keydown", e => keys[e.code] = true);
 window.addEventListener("keyup", e => keys[e.code] = false);
 
-// Disparos cómodos con ráfaga equilibrada
+// Mapeo de botones móviles
+document.getElementById("btn-left").addEventListener("touchstart", e => { e.preventDefault(); moveLeft = true; });
+document.getElementById("btn-left").addEventListener("touchend", () => moveLeft = false);
+document.getElementById("btn-right").addEventListener("touchstart", e => { e.preventDefault(); moveRight = true; });
+document.getElementById("btn-right").addEventListener("touchend", () => moveRight = false);
+document.getElementById("btn-fire").addEventListener("touchstart", e => { e.preventDefault(); triggerShoot = true; });
+document.getElementById("btn-fire").addEventListener("touchend", () => triggerShoot = false);
+
 let lastShot = 0;
 function shoot() {
     const now = Date.now();
-    if (now - lastShot > 250) { 
-        player.bullets.push({ x: player.x + player.w / 2 - 2, y: player.y, w: 4, h: 15, speed: 10 });
+    if (now - lastShot > 220) { // Un pelo más rápido para ayudar en móvil
+        player.bullets.push({ x: player.x + player.w / 2 - 2, y: player.y, w: 5, h: 16, speed: 11 });
         lastShot = now;
     }
 }
 
-// Generador de confeti para la gran revelación
 function deploConfetti() {
     for (let i = 0; i < 120; i++) {
         confetti.push({
@@ -79,14 +111,19 @@ function update() {
         return;
     }
 
-    if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed;
-    if (keys["ArrowRight"] && player.x < canvas.width - player.w) player.x += player.speed;
-    if (keys["Space"]) shoot();
+    // Procesar movimiento (Teclado o botones móviles)
+    if ((keys["ArrowLeft"] || moveLeft) && player.x > 0) player.x -= player.speed;
+    if ((keys["ArrowRight"] || moveRight) && player.x < canvas.width - player.w) player.x += player.speed;
+    if (keys["Space"] || triggerShoot) shoot();
 
-    player.bullets.forEach((b, index) => {
+    // Actualizar balas con borrado seguro
+    for (let i = player.bullets.length - 1; i >= 0; i--) {
+        let b = player.bullets[i];
         b.y -= b.speed;
-        if (b.y < 0) player.bullets.splice(index, 1);
-    });
+        if (b.y < 0) {
+            player.bullets.splice(i, 1);
+        }
+    }
 
     let changeDirection = false;
     let aliveCount = 0;
@@ -96,14 +133,14 @@ function update() {
         aliveCount++;
         e.x += enemySpeed * enemyDirection;
         if (e.x + e.w > canvas.width || e.x < 0) changeDirection = true;
-        
-        // Si algún marciano llega abajo, se acaba el juego (pero baja despacio para dar margen)
-        if (e.y + e.h >= player.y) gameOver = true;
+        if (e.y + e.h >= player.y) gameOver = true; // Fin si llegan abajo
     });
 
     if (aliveCount === 0 && !gameWon) {
         gameWon = true;
         deploConfetti();
+        // Ocultar botones al ganar para ver bien el mensaje
+        document.getElementById("controls").style.display = "none";
     }
 
     if (changeDirection) {
@@ -111,41 +148,41 @@ function update() {
         enemies.forEach(e => { if (e.alive) e.y += 18; });
     }
 
-    player.bullets.forEach((b, bIdx) => {
-        enemies.forEach(e => {
-            if (e.alive && b.x > e.x && b.x < e.x + e.w && b.y > e.y && b.y < e.y + e.h) {
-                e.alive = false;
-                player.bullets.splice(bIdx, 1);
+    // Colisiones
+    for (let bIdx = player.bullets.length - 1; bIdx >= 0; bIdx--) {
+        let b = player.bullets[bIdx];
+        for (let e = 0; e < enemies.length; e++) {
+            let enemy = enemies[e];
+            if (enemy.alive && b.x > enemy.x && b.x < enemy.x + enemy.w && b.y > enemy.y && b.y < enemy.y + enemy.h) {
+                enemy.alive = false;
                 score += 50;
+                player.bullets.splice(bIdx, 1);
+                break;
             }
-        });
-    });
+        }
+    }
 }
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Fondo espacial de estrellas fijas
+    // Estrellas de fondo
     ctx.fillStyle = "rgba(255,255,255,0.3)";
     for(let i=0; i<40; i++) {
         ctx.fillRect((i*83)%canvas.width, (i*127)%canvas.height, 2, 2);
     }
 
     if (!gameWon) {
-        // Nave de las jugadoras (Verde neón brillante)
         ctx.fillStyle = "#00ffcc";
         ctx.fillRect(player.x, player.y, player.w, player.h);
 
-        // Disparos
         ctx.fillStyle = "#ffff00";
         player.bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
 
-        // Los 32 Marcianos (Magenta retro)
         ctx.fillStyle = "#ff007f";
         enemies.forEach(e => {
             if (e.alive) {
                 ctx.fillRect(e.x, e.y, e.w, e.h);
-                // Detalles de los ojos/antenas de los marcianitos
                 ctx.fillStyle = "#000";
                 ctx.fillRect(e.x + 8, e.y + 8, 6, 6);
                 ctx.fillRect(e.x + e.w - 14, e.y + 8, 6, 6);
@@ -154,24 +191,21 @@ function draw() {
         });
     }
 
-    // Puntuación en pantalla
     ctx.fillStyle = "#66fcf1";
     ctx.font = "18px monospace";
     ctx.textAlign = "left";
     ctx.fillText(`SCORE: ${score}`, 20, 35);
 
-    // Si pierden (Pantalla de reintento suave)
     if (gameOver) {
         ctx.textAlign = "center";
         ctx.fillStyle = "#ff3333";
-        ctx.font = "bold 40px sans-serif";
+        ctx.font = "bold 34px sans-serif";
         ctx.fillText("¡CASI! RECARGA LA PÁGINA", canvas.width / 2, canvas.height / 2 - 20);
-        ctx.font = "20px monospace";
+        ctx.font = "18px monospace";
         ctx.fillStyle = "#fff";
-        ctx.fillText("¡Inténtalo otra vez, que el premio lo merece!", canvas.width / 2, canvas.height / 2 + 30);
+        ctx.fillText("¡Inténtalo otra vez para unirte a la misión!", canvas.width / 2, canvas.height / 2 + 30);
     }
 
-    // ¡¡PANTALLA DE VICTORIA CON EL MENSAJE!!
     if (gameWon) {
         confetti.forEach(p => {
             ctx.fillStyle = p.color;
@@ -180,14 +214,15 @@ function draw() {
 
         ctx.textAlign = "center";
         ctx.fillStyle = "#00ffcc";
-        ctx.font = "bold 32px sans-serif";
+        // Ajustamos tamaño de fuente para pantallas móviles
+        ctx.font = "bold 26px sans-serif";
         ctx.shadowBlur = 25;
         ctx.shadowColor = "#00ffcc";
         ctx.fillText("BIENVENIDA, CÓDIGO DE ACCESO: C0RT@N@", canvas.width / 2, canvas.height / 2);
         
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#ffffff";
-        ctx.font = "20px monospace";
+        ctx.font = "18px monospace";
         ctx.fillText("¡Estás dentro de la misión! 🍿🎉", canvas.width / 2, canvas.height / 2 + 65);
     }
 }
