@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Arkanoid Queso Móvil Corregido</title>
+    <style>
+        body {
+            background-color: #1a1a2e;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            touch-action: none;
+        }
+        h1 {
+            margin: 5px 0;
+            font-size: 22px;
+            color: #ffcc00;
+            text-shadow: 0 0 10px #ffcc00;
+        }
+        #hud {
+            display: flex;
+            justify-content: space-between;
+            width: 340px;
+            font-size: 18px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        #lives {
+            color: #e94560;
+        }
+        #game-container {
+            position: relative;
+            width: 360px;
+            height: 480px;
+        }
+        canvas {
+            border: 4px solid #e94560;
+            box-shadow: 0 0 15px #e94560;
+            background-color: #161625;
+            width: 100%;
+            height: 100%;
+        }
+        #game-over-screen {
+            display: none;
+            position: absolute;
+            top: 0; left: 0;
+            background: rgba(15, 15, 26, 0.95);
+            width: 100%;
+            height: 100%;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid #ff0000;
+            box-sizing: border-box;
+            z-index: 10;
+            padding: 20px;
+        }
+        #game-over-screen h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            text-align: center;
+            line-height: 1.4;
+        }
+        #game-over-screen button {
+            background-color: #ffcc00;
+            color: black;
+            border: none;
+            padding: 12px 24px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        #controls-info {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #aaa;
+            text-align: center;
+            max-width: 320px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>ARKANOID QUESO</h1>
+    <div id="hud">
+        <div>Puntos: <span id="score">0</span></div>
+        <div id="lives">❤️ ❤️ ❤️</div>
+    </div>
+    
+    <div id="game-container">
+        <canvas id="canvas" width="360" height="480"></canvas>
+        <div id="game-over-screen">
+            <h2 id="over-text">¡FIN DEL JUEGO!</h2>
+            <button onclick="resetGame()">Jugar de nuevo</button>
+        </div>
+    </div>
+
+    <div id="controls-info">Arrastra el dedo de un lado a otro en la mitad inferior de la pantalla o usa el teclado.</div>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const scoreElement = document.getElementById("score");
+        const livesElement = document.getElementById("lives");
+        const gameOverScreen = document.getElementById("game-over-screen");
+        const overText = document.getElementById("over-text");
+
+        const paddleWidth = 80;
+        const paddleHeight = 12;
+        let paddleX;
+
+        const ballRadius = 8;
+        let ballX, ballY, ballDX, ballDY, ballAngle = 0;
+
+        const brickRows = 4;
+        const brickCols = 5;
+        const brickWidth = 60;
+        const brickHeight = 25;
+        const brickPadding = 6;
+        const brickOffsetTop = 40;
+        const brickOffsetLeft = 18;
+        let bricks = [];
+
+        let score = 0;
+        let lives = 3;
+        let gameOver = false;
+        let isMovingLeft = false;
+        let isMovingRight = false;
+        
+        let confettiParticles = [];
+        let isWin = false;
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            gameOver = false;
+            isWin = false;
+            confettiParticles = [];
+            scoreElement.innerText = score;
+            updateLivesUI();
+            gameOverScreen.style.display = "none";
+            
+            paddleX = (canvas.width - paddleWidth) / 2;
+            resetBall();
+
+            bricks = [];
+            for (let c = 0; c < brickCols; c++) {
+                bricks[c] = [];
+                for (let r = 0; r < brickRows; r++) {
+                    bricks[c][r] = { x: 0, y: 0, status: 1 };
+                }
+            }
+        }
+
+        function resetBall() {
+            ballX = canvas.width / 2;
+            ballY = canvas.height - 40;
+            ballDX = 2 * (Math.random() > 0.5 ? 1 : -1);
+            ballDY = -3.5; 
+        }
+
+        function updateLivesUI() {
+            let hearts = "";
+            for(let i = 0; i < lives; i++) {
+                hearts += "❤️ ";
+            }
+            livesElement.innerText = hearts || "☠️";
+        }
+
+        window.addEventListener("keydown", e => {
+            if (e.key === "ArrowLeft") isMovingLeft = true;
+            if (e.key === "ArrowRight") isMovingRight = true;
+        });
+
+        window.addEventListener("keyup", e => {
+            if (e.key === "ArrowLeft") isMovingLeft = false;
+            if (e.key === "ArrowRight") isMovingRight = false;
+        });
+
+        function movePaddlePointer(clientX) {
+            const rect = canvas.getBoundingClientRect();
+            const rootX = clientX - rect.left;
+            const scaleX = canvas.width / rect.width;
+            paddleX = (rootX * scaleX) - paddleWidth / 2;
+            
+            if (paddleX < 0) paddleX = 0;
+            if (paddleX > canvas.width - paddleWidth) paddleX = canvas.width - paddleWidth;
+        }
+
+        window.addEventListener("mousemove", e => {
+            movePaddlePointer(e.clientX);
+        });
+
+        window.addEventListener("touchmove", e => {
+            if (e.touches && e.touches.length > 0) {
+                e.preventDefault(); 
+                movePaddlePointer(e.touches[0].clientX); 
+            }
+        }, { passive: false });
+
+        window.addEventListener("touchstart", e => {
+            if (e.touches && e.touches.length > 0) {
+                movePaddlePointer(e.touches[0].clientX);
+            }
+        }, { passive: false });
+
+        function initConfetti() {
+            const colors = ["#ffcc00", "#e94560", "#4ecc71", "#3498db", "#9b59b6", "#ff5722"];
+            for (let i = 0; i < 100; i++) {
+                confettiParticles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * -canvas.height,
+                    size: Math.random() * 6 + 4,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    speedY: Math.random() * 2 + 2,
+                    speedX: Math.random() * 2 - 1,
+                    rotation: Math.random() * 360,
+                    rotationSpeed: Math.random() * 4 - 2
+                });
+            }
+        }
+
+        function collisionDetection() {
+            let allDestroyed = true;
+            for (let c = 0; c < brickCols; c++) {
+                for (let r = 0; r < brickRows; r++) {
+                    let b = bricks[c][r];
+                    if (b.status === 1) {
+                        allDestroyed = false;
+                        if (ballX > b.x && ballX < b.x + brickWidth && ballY > b.y && ballY < b.y + brickHeight) {
+                            ballDY = -ballDY;
+                            b.status = 0;
+                            score += 10;
+                            scoreElement.innerText = score;
+                        }
+                    }
+                }
+            }
+            if (allDestroyed) {
+                endGame(true);
+            }
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            if (isMovingLeft && paddleX > 0) paddleX -= 5;
+            if (isMovingRight && paddleX < canvas.width - paddleWidth) paddleX += 5;
+
+            if (ballX + ballDX > canvas.width - ballRadius || ballX + ballDX < ballRadius) {
+                ballDX = -ballDX;
+            }
+
+            if (ballY + ballDY < ballRadius) {
+                ballDY = -ballDY;
+            } 
+            else if (ballY + ballDY > canvas.height - ballRadius - paddleHeight - 5) {
+                if (ballX > paddleX && ballX < paddleX + paddleWidth) {
+                    let collidePoint = ballX - (paddleX + paddleWidth / 2);
+                    collidePoint = collidePoint / (paddleWidth / 2); 
+                    let angle = collidePoint * (Math.PI / 3); 
+                    ballDX = 4.5 * Math.sin(angle);
+                    ballDY = -4.5 * Math.cos(angle);
+                } else if (ballY + ballDY > canvas.height - ballRadius) {
+                    lives--;
+                    updateLivesUI();
+                    if(lives <= 0) {
+                        endGame(false);
+                    } else {
+                        resetBall();
+                    }
+                }
+            }
+
+            ballX += ballDX;
+            ballY += ballDY;
+            ballAngle += 0.05; 
+
+            collisionDetection();
+        }
+
+        function endGame(win) {
+            gameOver = true;
+            isWin = win;
+            if (win) {
+                overText.innerText = "PROXIMO OBJETIVO:\n1 SEMANA DE DICIEMBRE LIBRE PARA TODAS 🚀🎉";
+                overText.style.color = "#4ecc71";
+                overText.style.textShadow = "0 0 10px #4ecc71";
+                initConfetti();
+            } else {
+                overText.innerText = "¡FIN DEL JUEGO!";
+                overText.style.color = "#ff0000";
+                overText.style.textShadow = "none";
+            }
+            gameOverScreen.style.display = "flex";
+        }
+
+        function drawPaddle() {
+            ctx.fillStyle = "#8b5a2b"; 
+            ctx.fillRect(paddleX, canvas.height - paddleHeight - 5, paddleWidth, paddleHeight);
+            ctx.fillStyle = "#5c3a21";
+            ctx.fillRect(paddleX, canvas.height - paddleHeight + 2, paddleWidth, 2);
+        }
+
+        function drawBall() {
+            ctx.save();
+            ctx.translate(ballX, ballY);
+            ctx.rotate(ballAngle);
+            ctx.fillStyle = "#f1c40f";
+            ctx.beginPath();
+            ctx.arc(0, 0, ballRadius, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.fillStyle = "#f39c12";
+            ctx.beginPath();
+            ctx.arc(-ballRadius/2, -ballRadius/2, ballRadius/2, 0, 2*Math.PI);
+            ctx.arc(ballRadius/2, -ballRadius/2, ballRadius/2, 0, 2*Math.PI);
+            ctx.fill();
+            ctx.fillStyle = "black";
+            ctx.beginPath();
+            ctx.arc(0, 0, 1.5, 0, 2*Math.PI);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawBricks() {
+            for (let c = 0; c < brickCols; c++) {
+                for (let r = 0; r < brickRows; r++) {
+                    if (bricks[c][r].status === 1) {
+                        let brickX = (c * (brickWidth + brickPadding)) + brickOffsetLeft;
+                        let brickY = (r * (brickHeight + brickPadding)) + brickOffsetTop;
+                        bricks[c][r].x = brickX;
+                        bricks[c][r].y = brickY;
+                        
+                        ctx.fillStyle = "#ffcc00";
+                        ctx.fillRect(brickX, brickY, brickWidth, brickHeight);
+
+                        ctx.fillStyle = "#d4ab00";
+                        ctx.beginPath();
+                        ctx.arc(brickX + 15, brickY + 12, 3, 0, 2 * Math.PI);
+                        ctx.arc(brickX + 45, brickY + 8, 4, 0, 2 * Math.PI);
+                        ctx.arc(brickX + 30, brickY + 18, 2, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        function drawConfetti() {
+            confettiParticles.forEach(p => {
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation * Math.PI / 180);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                ctx.restore();
+
+                p.y += p.speedY;
+                p.x += p.speedX;
+                p.rotation += p.rotationSpeed;
+
+                if (p.y > canvas.height) {
+                    p.y = -10;
+                    p.x = Math.random() * canvas.width;
+                }
+            });
+        }
+
+        function gameLoop() {
+            update();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBricks();
+            drawPaddle();
+            drawBall();
+            
+            if (isWin) {
+                drawConfetti();
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        resetGame();
+        gameLoop();
+    </script>
+</body>
+</html>
